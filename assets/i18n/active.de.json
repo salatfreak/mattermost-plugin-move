@@ -1,0 +1,16 @@
+{
+  "command.hint": "[nachrichten...]",
+  "command.desc": "Verschiebe Nachrichten (IDs oder URLs) in aktuellen Kanal oder Thread",
+  "error.server": "Es ist ein Server-Fehler aufgetreten.",
+  "error.no_messages": "Du hast keine Nachrichten angegeben.",
+  "error.other_instance": "Nachrichten können nicht aus anderem Mattermost verschoben werden.",
+  "error.not_a_message": "{{.PostId}} ist keine Nachrichten-ID oder -URL.",
+  "error.attach_itself": "Nachrichten können nicht an sich selbst angehängt werden.",
+  "error.newer_message": "Nachrichten können nicht an neuere Nachricht angehängt werden.",
+  "error.not_exist": "Die Nachricht {{.PostId}} existiert nicht.",
+  "error.permission_message": "Du darfst die Nachricht {{.PostId}} nicht verschieben.",
+  "error.permission_replies": "Du darfst nicht alle Antworten der Nachricht {{.PostId}} verschieben.",
+  "error.other_team": "Nachrichten können nicht zwischen Teams verschoben werden.",
+  "error.private_channel": "Nachrichten können nicht aus privaten Kanälen geschoben werden.",
+  "error.permission_target": "Du darfst im Kanal {{.ChannelName}} keine Nachrichten erstellen."
+}
