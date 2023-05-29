@@ -1,6 +1,9 @@
 package plug
 
 import (
+  "time"
+  "encoding/json"
+
   "github.com/mattermost/mattermost-server/v6/model"
 
   "github.com/salatfreak/mattermost-plugin-move/server/i18n"
@@ -44,7 +47,7 @@ func (p *Plug) runMoveMessages(
 
   // Move messages
   for _, post := range(srcPosts) {
-    err = p.movePost(post, tgtChannel, tgtPost)
+    err = p.movePost(userId, post, tgtChannel, tgtPost)
     if err != nil { return err }
   }
   return nil
@@ -134,7 +137,7 @@ func (p *Plug) assertTargetPermissions(
 }
 
 func (p *Plug) movePost(
-  source *model.Post, channel *model.Channel, root *model.Post,
+  userId string, source *model.Post, channel *model.Channel, root *model.Post,
 ) error {
   p.API.LogDebug(
     "Moving post", "post", source, "channel", channel, "thread", root,
@@ -175,6 +178,14 @@ func (p *Plug) movePost(
     }
     p.API.LogDebug("Copied attachments", "attachments", newPost.FileIds)
 
+    // Add move event to history
+    addMoveHistoryElement(newPost, map[string]any{
+      "timestamp": time.Now().Unix(),
+      "by_user": userId,
+      "from_channel": post.ChannelId,
+      "from_thread": post.RootId,
+    })
+
     // Create new post
     newPost, aer := p.API.CreatePost(newPost)
     if aer != nil { return aer }
@@ -201,5 +212,25 @@ func (p *Plug) movePost(
   aer := p.API.DeletePost(source.Id)
   if aer != nil { return aer }
   p.API.LogDebug("Deleted original post")
+  return nil
+}
+
+func addMoveHistoryElement(post *model.Post, element map[string]any) error {
+  // Get and deserialize history
+  var history []map[string]any
+  if historyString, ok := post.GetProp("move_history").(string); ok {
+    err := json.Unmarshal([]byte(historyString), &history)
+    if err != nil { return err }
+  }
+  if history == nil { history = make([]map[string]any, 0, 1) }
+
+  // Append element
+  history = append(history, element)
+
+  // Serialize and set history
+  historyBytes, err := json.Marshal(history)
+  if err != nil { return err }
+  post.AddProp("move_history", string(historyBytes))
+
   return nil
 }
