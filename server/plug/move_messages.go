@@ -12,19 +12,19 @@ import (
 func (p *Plug) runMoveMessages(
   teamId, channelId, targetPostId, userId string, sourcePostIds []string,
 ) error {
-  p.API.LogDebug(
+  p.api.Log.Debug(
     "Running move command",
     "team", teamId, "channel", channelId, "targetPost", targetPostId,
     "user", userId, "sourcePosts", sourcePostIds,
   )
 
   // Get target channel and post
-  tgtChannel, aer := p.API.GetChannel(channelId)
-  if aer != nil { return aer }
+  tgtChannel, err := p.api.Channel.Get(channelId)
+  if err != nil { return err }
   var tgtPost *model.Post
   if targetPostId != "" {
-    tgtPost, aer = p.API.GetPost(targetPostId)
-    if aer != nil { return aer }
+    tgtPost, err = p.api.Post.GetPost(targetPostId)
+    if err != nil { return err }
   }
 
   // Get source posts
@@ -56,8 +56,8 @@ func (p *Plug) runMoveMessages(
 func (p *Plug) getPostsFromIds(postIds []string) ([]*model.Post, error) {
   posts := make([]*model.Post, 0, len(postIds))
   for _, postId := range(postIds) {
-    post, aer := p.API.GetPost(postId)
-    if aer != nil {
+    post, err := p.api.Post.GetPost(postId)
+    if err != nil {
       return nil, i18n.NewError(i18n.MsgErrorNotExist, "PostId", postId)
     }
     posts = append(posts, post)
@@ -68,7 +68,7 @@ func (p *Plug) getPostsFromIds(postIds []string) ([]*model.Post, error) {
 func (p *Plug) assertSourcePermissions(
   userId string, post *model.Post, tgtChannel *model.Channel,
 ) error {
-  p.API.LogDebug("Checking source permissions")
+  p.api.Log.Debug("Checking source permissions")
 
   // Check message delete permission
   var perm *model.Permission
@@ -76,21 +76,21 @@ func (p *Plug) assertSourcePermissions(
     case userId: perm = model.PermissionDeletePost
     default: perm = model.PermissionDeleteOthersPosts
   }
-  if !p.API.HasPermissionToChannel(userId, post.ChannelId, perm) {
+  if !p.api.User.HasPermissionToChannel(userId, post.ChannelId, perm) {
     return i18n.NewError(i18n.MsgErrorPermissionMessage, "PostId", post.Id)
   }
 
   // Check thread delete permission
   if post.RootId == "" {
-    threadPosts, aer := p.getThreadPosts(post.Id)
-    if aer != nil { return aer }
+    threadPosts, err := p.getThreadPosts(post.Id)
+    if err != nil { return err }
     for _, reply := range(threadPosts) {
       var perm *model.Permission
       switch reply.UserId {
         case userId: perm = model.PermissionDeletePost
         default: perm = model.PermissionDeleteOthersPosts
       }
-      if !p.API.HasPermissionToChannel(userId, reply.ChannelId, perm) {
+      if !p.api.User.HasPermissionToChannel(userId, reply.ChannelId, perm) {
         return i18n.NewError(i18n.MsgErrorPermissionReplies, "PostId", post.Id)
       }
     }
@@ -98,8 +98,8 @@ func (p *Plug) assertSourcePermissions(
 
   // Check channel restrictions
   if post.ChannelId != tgtChannel.Id {
-    srcChannel, aer := p.API.GetChannel(post.ChannelId)
-    if aer != nil { return aer }
+    srcChannel, err := p.api.Channel.Get(post.ChannelId)
+    if err != nil { return err }
     if srcChannel.TeamId != tgtChannel.TeamId {
       return i18n.NewError(i18n.MsgErrorOtherTeam)
     }
@@ -112,9 +112,9 @@ func (p *Plug) assertSourcePermissions(
 
 func (p *Plug) getThreadPosts(
   postId string,
-) ([]*model.Post, *model.AppError) {
-  thread, aer := p.API.GetPostThread(postId)
-  if aer != nil { return nil, aer }
+) ([]*model.Post, error) {
+  thread, err := p.api.Post.GetPostThread(postId)
+  if err != nil { return nil, err }
   thread.UniqueOrder()
   thread.SortByCreateAt() // This strangely sorts descendingly
   for i, j := 0, len(thread.Order) - 1; i < j; i, j = i + 1, j - 1 {
@@ -126,8 +126,8 @@ func (p *Plug) getThreadPosts(
 func (p *Plug) assertTargetPermissions(
   userId string, tgtChannel *model.Channel,
 ) error {
-  p.API.LogDebug("Checking target permissions")
-  if !p.API.HasPermissionToChannel(
+  p.api.Log.Debug("Checking target permissions")
+  if !p.api.User.HasPermissionToChannel(
     userId, tgtChannel.Id, model.PermissionCreatePost,
   ) {
     name := tgtChannel.DisplayName
@@ -139,20 +139,20 @@ func (p *Plug) assertTargetPermissions(
 func (p *Plug) movePost(
   userId string, source *model.Post, channel *model.Channel, root *model.Post,
 ) error {
-  p.API.LogDebug(
+  p.api.Log.Debug(
     "Moving post", "post", source, "channel", channel, "thread", root,
   )
 
   // Construct post list
   var posts []*model.Post
   if source.RootId == "" {
-    var aer *model.AppError
-    posts, aer = p.getThreadPosts(source.Id)
-    if aer != nil { return aer }
+    var err error
+    posts, err = p.getThreadPosts(source.Id)
+    if err != nil { return err }
   } else {
     posts = []*model.Post{ source }
   }
-  p.API.LogDebug("Retrieved post list", "posts", posts)
+  p.api.Log.Debug("Retrieved post list", "posts", posts)
 
   // Copy posts
   for _, post := range posts {
@@ -166,17 +166,17 @@ func (p *Plug) movePost(
     newPost.FileIds = make([]string, 0, len(post.FileIds))
     for _, fileId := range post.FileIds {
       // Load old file
-      info, aer := p.API.GetFileInfo(fileId)
-      if aer != nil { return aer }
-      bytes, aer := p.API.GetFile(fileId)
-      if aer != nil { return aer }
+      info, err := p.api.File.GetInfo(fileId)
+      if err != nil { return err }
+      bytes, err := p.api.File.Get(fileId)
+      if err != nil { return err }
 
       // Create new file
-      newInfo, aer := p.API.UploadFile(bytes, channel.Id, info.Name)
-      if aer != nil { return aer }
+      newInfo, err := p.api.File.Upload(bytes, channel.Id, info.Name)
+      if err != nil { return err }
       newPost.FileIds = append(newPost.FileIds, newInfo.Id)
     }
-    p.API.LogDebug("Copied attachments", "attachments", newPost.FileIds)
+    p.api.Log.Debug("Copied attachments", "attachments", newPost.FileIds)
 
     // Add move event to history
     addMoveHistoryElement(newPost, map[string]any{
@@ -187,31 +187,31 @@ func (p *Plug) movePost(
     })
 
     // Create new post
-    newPost, aer := p.API.CreatePost(newPost)
-    if aer != nil { return aer }
-    p.API.LogDebug("Created new post", "post", newPost)
+    err := p.api.Post.CreatePost(newPost)
+    if err != nil { return err }
+    p.api.Log.Debug("Created new post", "post", newPost)
 
     // Copy reactions
-    reactions, aer := p.API.GetReactions(post.Id)
-    if aer != nil { return aer }
+    reactions, err := p.api.Post.GetReactions(post.Id)
+    if err != nil { return err }
     for _, reaction := range(reactions) {
       reaction.PostId = newPost.Id
-      reaction, aer := p.API.AddReaction(reaction)
-      if aer != nil { return aer }
-      p.API.LogDebug("Added reaction", "reaction", reaction)
+      err := p.api.Post.AddReaction(reaction)
+      if err != nil { return err }
+      p.api.Log.Debug("Added reaction", "reaction", reaction)
     }
 
     // Set root post if nil
     if root == nil {
       root = newPost
-      p.API.LogDebug("Set post as root for further posts")
+      p.api.Log.Debug("Set post as root for further posts")
     }
   }
   
   // Delete original post
-  aer := p.API.DeletePost(source.Id)
-  if aer != nil { return aer }
-  p.API.LogDebug("Deleted original post")
+  err := p.api.Post.DeletePost(source.Id)
+  if err != nil { return err }
+  p.api.Log.Debug("Deleted original post")
   return nil
 }
 

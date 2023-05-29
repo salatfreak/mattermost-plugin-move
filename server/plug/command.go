@@ -37,7 +37,7 @@ func (p *Plug) ExecuteCommand(
   }
 
   // Return successfully
-  p.API.LogDebug("Messages moved successfully")
+  p.api.Log.Debug("Messages moved successfully")
   return &model.CommandResponse{}, nil
 }
 
@@ -47,14 +47,14 @@ func (p *Plug) responseFromError(
   var userError *i18n.Error
   if errors.As(err, &userError) {
     // Return localized message for user errors
-    p.API.LogDebug("Message moving user error", "error", userError)
+    p.api.Log.Debug("Message moving user error", "error", userError)
     return &model.CommandResponse{
       ResponseType: model.CommandResponseTypeEphemeral,
       Text: userError.Localize(localizer),
     }
   } else {
     // Return generic message for server errors
-    p.API.LogError("Message moving server error", "error", err.Error())
+    p.api.Log.Error("Message moving server error", "error", err.Error())
     return &model.CommandResponse{
       ResponseType: model.CommandResponseTypeEphemeral,
       Text: localizer.Static(i18n.MsgErrorServer),
